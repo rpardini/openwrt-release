@@ -1,0 +1,89 @@
+name: main-latest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare release ID
+        id: prep
+        run: |
+          echo ::set-output name=created::$(date -u +'%Y%m%d-%H%M')
+    outputs:
+      created: ${{ steps.prep.outputs.created }} # refer to as ${{needs.prepare.outputs.created}}
+
+  build:
+    needs: [ prepare ]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false # let other jobs try to complete if one fails
+      matrix:
+        include:
+          - { id: 'r5s', branch: "r5s", config: "diffconfig.r5s.final",  runner: "ubuntu-latest", cache_id: "rockchip", git_url: "https://github.com/rpardini/openwrt.git" }
+          # declare REMOTE_SHA1=$(git ls-remote "https://github.com/rpardini/openwrt.git" "r5s" | awk '{ print $1 }'); docker build --build-arg=OPENWRT_GIT_URL=https://github.com/rpardini/openwrt.git --build-arg=OPENWRT_BRANCH=r5s --build-arg=OPENWRT_REVISION=$REMOTE_SHA1 --build-arg=OPENWRT_CONFIG=diffconfig.r5s.final -t openwrt:r5s .
+    steps:
+      - name: cleanup GHA hosted runner (${{ matrix.runner }})
+        if: ${{ matrix.runner == 'ubuntu-latest' }} # only for hosted runners
+        run: |
+          # Workaround to provide additional free space for building.
+          #   https://github.com/actions/virtual-environments/issues/2840
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Obtain the revision of the remote git_url and branch
+        id: gitinfo
+        run: |
+          # Use git ls-remote to get the revision of the remote branch without cloning it
+          declare -r REMOTE_SHA1=$(git ls-remote "${{ matrix.git_url }}" "${{ matrix.branch }}" | awk '{ print $1 }')
+          echo "The remote sha1 is: ${REMOTE_SHA1}"
+          echo "sha1=${REMOTE_SHA1}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true # load the final stage, which is just alpine with the built artifacts
+          pull: false # don't pull; I don't care to invalidate caches because debian updated their stable image; openwrt builds its own toolchain, mostly
+          push: false # don't push, load is enough
+          tags: ${{ matrix.id }}-build-image:${{ matrix.id }}
+          cache-from: type=gha,scope=${{ matrix.cache_id }}
+          cache-to: type=gha,scope=${{ matrix.cache_id }},mode=max # mode=max "export all the layers of all intermediate steps"
+          build-args: |
+            OPENWRT_GIT_URL=${{ matrix.git_url }}
+            OPENWRT_BRANCH=${{ matrix.branch }}
+            RELEASE_ID=${{matrix.id}}
+            OPENWRT_REVISION=${{ steps.gitinfo.outputs.sha1 }}
+            OPENWRT_CONFIG=${{ matrix.config }}
+            RELEASE_VERSION=${{needs.prepare.outputs.created}}
+
+      - name: Extract artifacts from docker ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+        run: docker cp $(docker create --rm ${{ matrix.id }}-build-image:${{ matrix.id }}):/out ./
+
+      # Release the artifacts into GitHub Releases
+      - name: Release ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "${{needs.prepare.outputs.created}}-${{ matrix.id }}"
+          prerelease: false
+          title: "${{ matrix.id }} - ${{needs.prepare.outputs.created}}"
+          files: |
+            out/*
