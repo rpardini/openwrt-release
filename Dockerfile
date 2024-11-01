@@ -9,7 +9,7 @@ FROM debian:stable AS build
 
 # Install dependencies for building OpenWRT
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt -y update && apt -y install build-essential git make tree unzip wget file curl gawk python3 python3-dev rsync libncurses5-dev python3-elftools python3-setuptools swig
+RUN apt -y update && apt -y install build-essential git make tree unzip wget file curl gawk python3 python3-dev rsync libncurses5-dev python3-pyelftools python3-setuptools swig
 
 WORKDIR /src
 ARG OPENWRT_GIT_URL
