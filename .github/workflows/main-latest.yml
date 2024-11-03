@@ -15,7 +15,7 @@ jobs:
       - name: Prepare release ID
         id: prep
         run: |
-          echo ::set-output name=created::$(date -u +'%Y%m%d-%H%M')
+          echo "created=$(date -u +'%Y%m%d-%H%M')" >> "$GITHUB_OUTPUT"
     outputs:
       created: ${{ steps.prep.outputs.created }} # refer to as ${{needs.prepare.outputs.created}}
 
