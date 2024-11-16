@@ -64,12 +64,33 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+      - name: Build 1st pass ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
         uses: docker/build-push-action@v6
         with:
+          target: "build" # build the "build" stage, not the final one. for caching.
+          load: false # don't load anything into docker daemon, leave it all at buildkit cache
           context: .
           file: ./Dockerfile
+          pull: false # don't pull; I don't care to invalidate caches because debian updated their stable image; openwrt builds its own toolchain, mostly
+          push: false # don't push
+          tags: ${{ matrix.id }}-1st-build-image:${{ matrix.id }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:cache-1st-${{ matrix.cache_id }} # REGISTRY caching
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:cache-1st-${{ matrix.cache_id }},mode=max # mode=max "export all the layers of all intermediate steps"
+          build-args: |
+            OPENWRT_GIT_URL=${{ matrix.git_url }}
+            OPENWRT_BRANCH=${{ matrix.branch }}
+            RELEASE_ID=${{matrix.id}}
+            OPENWRT_REVISION=${{ steps.gitinfo.outputs.sha1 }}
+            OPENWRT_CONFIG=${{ matrix.config }}
+            RELEASE_VERSION=${{needs.prepare.outputs.created}}
+
+      - name: Build 2nd pass ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+        uses: docker/build-push-action@v6
+        with:
+          #target: # unset, builds the final stage
           load: true # load the final stage, which is just alpine with the built artifacts
+          context: .
+          file: ./Dockerfile
           pull: false # don't pull; I don't care to invalidate caches because debian updated their stable image; openwrt builds its own toolchain, mostly
           push: false # don't push, load is enough
           tags: ${{ matrix.id }}-build-image:${{ matrix.id }}
