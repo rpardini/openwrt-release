@@ -86,7 +86,7 @@ RUN cp -v bin/targets/*/*/*.img.gz /dist && \
     LABEL_ID="$(bash -c 'echo $(( RANDOM * 32768 + RANDOM ))')" && echo "random: $LABEL_ID" && \
     sfdisk --disk-id /dist/*.img "${LABEL_ID}" && \
     echo 'after:' && sfdisk -d /dist/*.img && \
-    zstdmt /dist/*.img && ls -lah /dist/*.img*
+    zstdmt --rm /dist/*.img && ls -lah /dist/*.img*
 
 # Finally the output stage
 FROM alpine:3
