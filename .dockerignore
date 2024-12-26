@@ -1,2 +1,0 @@
-# Ignore everything, all is done via Dockerfile and build args; there is no build context, really.
-**

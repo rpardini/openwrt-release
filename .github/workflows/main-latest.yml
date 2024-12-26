@@ -2,8 +2,8 @@ name: main-latest
 
 on:
   workflow_dispatch:
-  #push:
-  #  branches: [ main ]
+  push:
+    branches: [ main ]
 
 permissions: write-all # just let it do everything
 
@@ -32,15 +32,27 @@ jobs:
       - name: cleanup GHA hosted runner (${{ matrix.runner }})
         if: ${{ matrix.runner == 'ubuntu-latest' }} # only for hosted runners
         run: |
-          # Workaround to provide additional free space for building.
-          #   https://github.com/actions/virtual-environments/issues/2840
+          # Workaround to provide additional free space for building. https://github.com/actions/virtual-environments/issues/2840
+          set -x
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
-      - name: Checkout
+      - name: "Checkout ${{ matrix.git_url }} at ${{ matrix.branch }}"
         uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.git_url }}
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Obtain the revision of checked out branch
+        id: gitinfo
+        run: |
+          # get the SHA1 of actions/checkout above
+          declare -r SHA1="$(git rev-parse HEAD)"
+          echo "The local sha1 is: ${SHA1}"
+          echo "sha1=${SHA1}" >> "$GITHUB_OUTPUT"
 
       - name: Docker Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -49,14 +61,6 @@ jobs:
           username: ${{ github.repository_owner }} # github username or org
           password: ${{ secrets.GITHUB_TOKEN }}    # github actions builtin token. repo has to have pkg access.
 
-      - name: Obtain the revision of the remote git_url and branch
-        id: gitinfo
-        run: |
-          # Use git ls-remote to get the revision of the remote branch without cloning it
-          declare -r REMOTE_SHA1=$(git ls-remote "${{ matrix.git_url }}" "${{ matrix.branch }}" | awk '{ print $1 }')
-          echo "The remote sha1 is: ${REMOTE_SHA1}"
-          echo "sha1=${REMOTE_SHA1}" >> "$GITHUB_OUTPUT"
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -64,38 +68,19 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build 1st pass ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
-        uses: docker/build-push-action@v6
-        with:
-          target: "build" # build the "build" stage, not the final one. for caching.
-          load: false # don't load anything into docker daemon, leave it all at buildkit cache
-          context: .
-          file: ./Dockerfile
-          pull: false # don't pull; I don't care to invalidate caches because debian updated their stable image; openwrt builds its own toolchain, mostly
-          push: false # don't push
-          tags: ${{ matrix.id }}-1st-build-image:${{ matrix.id }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:cache-1st-${{ matrix.cache_id }} # REGISTRY caching
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:cache-1st-${{ matrix.cache_id }},mode=max # mode=max "export all the layers of all intermediate steps"
-          build-args: |
-            OPENWRT_GIT_URL=${{ matrix.git_url }}
-            OPENWRT_BRANCH=${{ matrix.branch }}
-            RELEASE_ID=${{matrix.id}}
-            OPENWRT_REVISION=${{ steps.gitinfo.outputs.sha1 }}
-            OPENWRT_CONFIG=${{ matrix.config }}
-            RELEASE_VERSION=${{needs.prepare.outputs.created}}
-
-      - name: Build 2nd pass ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+      - name: Build ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
         uses: docker/build-push-action@v6
         with:
           #target: # unset, builds the final stage
           load: true # load the final stage, which is just alpine with the built artifacts
           context: .
-          file: ./Dockerfile
-          pull: false # don't pull; I don't care to invalidate caches because debian updated their stable image; openwrt builds its own toolchain, mostly
+          file: ./Dockerfile # not local to this repo -- see actions/checkout above
+          pull: false # don't pull.
           push: false # don't push, load is enough
           tags: ${{ matrix.id }}-build-image:${{ matrix.id }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:cache-${{ matrix.cache_id }} # REGISTRY caching
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:cache-${{ matrix.cache_id }},mode=max # mode=max "export all the layers of all intermediate steps"
+          # caching's not worth the trouble and compression/transmit/decompression time
+          #cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:cache-${{ matrix.cache_id }} # REGISTRY caching
+          #cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:cache-${{ matrix.cache_id }},mode=max # mode=max "export all the layers of all intermediate steps"
           build-args: |
             OPENWRT_GIT_URL=${{ matrix.git_url }}
             OPENWRT_BRANCH=${{ matrix.branch }}
