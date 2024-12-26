@@ -5,6 +5,7 @@
 # OPENWRT_REVISION==${{ steps.gitinfo.outputs.sha1 }}
 # OPENWRT_CONFIG=${{ matrix.config }}
 # RELEASE_VERSION=${{needs.prepare.outputs.created}}
+# NUMCORES=16
 FROM debian:stable AS build
 
 # Install dependencies for building OpenWRT, plus utils for compression and randomizing MBR label-id
@@ -33,20 +34,31 @@ RUN cp -v ${OPENWRT_CONFIG} .config && make defconfig
 # Download sources; as this can fail due to network issues, we retry a few times with decreasing parallelism
 RUN make download -j4 || make download -j2 || make download || make download
 
+ARG CORES=16
+ARG CORES_LLVM=10
 # Now lets build parts of OpenWRT, we can't build everything in one go as caches would grow too big.
-# For each step, first do a parallel build with nproc+2; if it fails, build with -j1 V=s to get more verbose output so we know what broke in the GHA logs.
+# For each step, first do a parallel build with multiple cores; if it fails, build with -j1 V=s to get more verbose output so we know what broke in the GHA logs.
 
-# Build the toolchain first
-RUN make -j$(($(nproc)+2)) toolchain/install  || make toolchain/install -j1 V=s
+# Build cmake first of all, as it is CPU-intensive but not so memory-intensive as llvm-bpf itself
+RUN make -j${CORES} tools/cmake/compile || make tools/cmake/compile -j1 V=s
+
+# Build llvm-bpf first; this can use more than 2Gb+ of memory **per-core** thus use a smaller number of cores.
+RUN make -j${CORES_LLVM} tools/llvm-bpf/compile || make tools/llvm-bpf/compile -j1 V=s
+
+# Build the tools separately; this includes gcc etc, but memory usage is manageable
+RUN make -j${CORES} tools/compile || make tools/compile -j1 V=s
+
+# Build the toolchain separately; since tools and llvm-bpf are already built, use the full CORES for this
+RUN make -j${CORES} toolchain/install || make toolchain/install -j1 V=s
 
 # Build the kernel
-RUN make -j$(($(nproc)+2)) target/linux/compile || make target/linux/compile -j1 V=s
+RUN make -j${CORES} target/linux/compile || make target/linux/compile -j1 V=s
 
 # Build the packages
-RUN make -j$(($(nproc)+2)) package/compile || make package/compile -j1 V=s
+RUN make -j${CORES} package/compile || make package/compile -j1 V=s
 
 # Build the firmware
-RUN make -j$(($(nproc)+2)) || make -j1 V=s
+RUN make -j${CORES} || make -j1 V=s
 ### </TO-BE-REPLAYED>
 
 ## Ok, now we've a built firmware. Let's fetch from the repo and checkout the specific commit, then build everything again.
@@ -65,17 +77,26 @@ RUN make download -j4 || make download -j2 || make download || make download
 # Now lets build parts of OpenWRT, we can't build everything in one go as caches would grow too big.
 # For each step, first do a parallel build with nproc+2; if it fails, build with -j1 V=s to get more verbose output so we know what broke in the GHA logs.
 
-# Build the toolchain first
-RUN make -j$(($(nproc)+2)) toolchain/install  || make toolchain/install -j1 V=s
+# Build cmake first of all, as it is CPU-intensive but not so memory-intensive as llvm-bpf itself
+RUN make -j${CORES} tools/cmake/compile || make tools/cmake/compile -j1 V=s
+
+# Build llvm-bpf first; this can use more than 2Gb+ of memory **per-core** thus use a smaller number of cores.
+RUN make -j${CORES_LLVM} tools/llvm-bpf/compile || make tools/llvm-bpf/compile -j1 V=s
+
+# Build the tools separately; this includes gcc etc, but memory usage is manageable
+RUN make -j${CORES} tools/compile || make tools/compile -j1 V=s
+
+# Build the toolchain separately; since tools and llvm-bpf are already built, use the full CORES for this
+RUN make -j${CORES} toolchain/install || make toolchain/install -j1 V=s
 
 # Build the kernel
-RUN make -j$(($(nproc)+2)) target/linux/compile || make target/linux/compile -j1 V=s
+RUN make -j${CORES} target/linux/compile || make target/linux/compile -j1 V=s
 
 # Build the packages
-RUN make -j$(($(nproc)+2)) package/compile || make package/compile -j1 V=s
+RUN make -j${CORES} package/compile || make package/compile -j1 V=s
 
 # Build the firmware
-RUN make -j$(($(nproc)+2)) || make -j1 V=s
+RUN make -j${CORES} || make -j1 V=s
 ### </REPLAYED>
 
 # Decompress gzip, random MBR label-id, and compress with zstd

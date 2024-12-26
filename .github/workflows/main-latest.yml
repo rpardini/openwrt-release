@@ -2,8 +2,8 @@ name: main-latest
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
+  #push:
+  #  branches: [ main ]
 
 permissions: write-all # just let it do everything
 
