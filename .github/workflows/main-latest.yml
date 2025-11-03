@@ -29,15 +29,18 @@ jobs:
           - { id: 'r5s', branch: "r5s", config: "diffconfig.r5s.final",  runner: "ubuntu-latest", cache_id: "rockchip", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
           # declare REMOTE_SHA1=$(git ls-remote "https://github.com/rpardini/openwrt.git" "r5s" | awk '{ print $1 }'); docker build --build-arg=OPENWRT_GIT_URL=https://github.com/rpardini/openwrt.git --build-arg=OPENWRT_BRANCH=r5s --build-arg=OPENWRT_REVISION=$REMOTE_SHA1 --build-arg=OPENWRT_CONFIG=diffconfig.r5s.final -t openwrt:r5s .
     steps:
-      - name: cleanup GHA hosted runner (${{ matrix.runner }})
+      # Clean runner to have more disk space
+      - name: Free Disk Space (GH-hosted runner)
         if: ${{ matrix.runner == 'ubuntu-latest' }} # only for hosted runners
-        run: |
-          # Workaround to provide additional free space for building. https://github.com/actions/virtual-environments/issues/2840
-          set -x
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: "Checkout ${{ matrix.git_url }} at ${{ matrix.branch }}"
         uses: actions/checkout@v4
