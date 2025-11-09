@@ -26,12 +26,12 @@ jobs:
       fail-fast: false # let other jobs try to complete if one fails
       matrix:
         include:
-          - { id: 'r5s', branch: "r5s", config: "diffconfig.r5s.final",  runner: "ubuntu-latest", cache_id: "rockchip", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
+          - { id: 'r5s', branch: "r5s", config: "diffconfig.r5s.final",  runner: "ubuntu-24.04-arm", cache_id: "rockchip", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
           # declare REMOTE_SHA1=$(git ls-remote "https://github.com/rpardini/openwrt.git" "r5s" | awk '{ print $1 }'); docker build --build-arg=OPENWRT_GIT_URL=https://github.com/rpardini/openwrt.git --build-arg=OPENWRT_BRANCH=r5s --build-arg=OPENWRT_REVISION=$REMOTE_SHA1 --build-arg=OPENWRT_CONFIG=diffconfig.r5s.final -t openwrt:r5s .
     steps:
       # Clean runner to have more disk space
       - name: Free Disk Space (GH-hosted runner)
-        if: ${{ matrix.runner == 'ubuntu-latest' }} # only for hosted runners
+        if: ${{ matrix.runner == 'ubuntu-24.04-arm' }} # only for hosted runners
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
