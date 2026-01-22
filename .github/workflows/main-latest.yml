@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - { id: 'r5s', branch: "r5s", config: "diffconfig.r5s.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
-          - { id: 'r6c', branch: "r5s", config: "diffconfig.r5c.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
+          - { id: 'r6c', branch: "r5s", config: "diffconfig.r6c.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
     steps:
       # Clean runner to have more disk space
       - name: Free Disk Space (GH-hosted runner)
