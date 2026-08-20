@@ -7,32 +7,30 @@ on:
 
 permissions: write-all # just let it do everything
 
+env:
+  # The fork that carries the Dockerfile, the board configs and the files_<board> overlays.
+  OPENWRT_REPO: "rpardini/openwrt"
+  OPENWRT_BRANCH: "r5s-main-202608"
+  # The Dockerfile builds the toolchain, the kernel and all packages once (they're the same for every
+  # board: all three are rockchip/armv8), seeded with the config below. The per-board image stages
+  # then re-point .config at their own board, so this only picks the seed - leave it at r5s.
+  SEED_MACHINE_ID: "r5s"
+  SEED_OPENWRT_CONFIG: "diffconfig.r5s.final"
+
 jobs:
 
-  prepare:
-    runs-on: ubuntu-latest
+  # A single job: one Docker build produces every board and variant (e24c/r5s/r6c, custom/generic),
+  # and they all go into a single GitHub Release.
+  build:
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Prepare release ID
         id: prep
         run: |
           echo "created=$(date -u +'%Y%m%d-%H%M')" >> "$GITHUB_OUTPUT"
-    outputs:
-      created: ${{ steps.prep.outputs.created }} # refer to as ${{needs.prepare.outputs.created}}
 
-  build:
-    needs: [ prepare ]
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false # let other jobs try to complete if one fails
-      matrix:
-        include:
-          - { id: 'r5s', branch: "r5s-main-202608", config: "diffconfig.r5s.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
-          - { id: 'r6c', branch: "r5s-main-202608", config: "diffconfig.r6c.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
-          - { id: 'e24c', branch: "r5s-main-202608", config: "diffconfig.e24c.final",  runner: "ubuntu-24.04-arm", git_owner_repo: "rpardini/openwrt", git_url: "https://github.com/rpardini/openwrt.git" }
-    steps:
-      # Clean runner to have more disk space
+      # Clean runner to have more disk space; one runner now builds every board, so we need all of it
       - name: Free Disk Space (GH-hosted runner)
-        if: ${{ matrix.runner == 'ubuntu-24.04-arm' }} # only for hosted runners
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -43,11 +41,11 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: "Checkout ${{ matrix.git_url }} at ${{ matrix.branch }}"
+      - name: "Checkout ${{ env.OPENWRT_REPO }} at ${{ env.OPENWRT_BRANCH }}"
         uses: actions/checkout@v4
         with:
-          repository: ${{ matrix.git_owner_repo }}
-          ref: ${{ matrix.branch }}
+          repository: ${{ env.OPENWRT_REPO }}
+          ref: ${{ env.OPENWRT_BRANCH }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker Login to GitHub Container Registry
@@ -68,7 +66,9 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=-1
             env.BUILDKIT_STEP_LOG_MAX_SPEED=-1
 
-      - name: Build ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+      # Builds the final stage, which collects /dist from all six per-board image stages. Those stages
+      # have no dependencies on each other, so buildx runs them in parallel on this one runner.
+      - name: "Build all boards from ${{ env.OPENWRT_BRANCH }}"
         uses: docker/build-push-action@v6
         with:
           #target: # unset, builds the final stage
@@ -77,23 +77,28 @@ jobs:
           file: ./Dockerfile # not local to this repo -- see actions/checkout above
           pull: false # don't pull.
           push: false # don't push, load is enough
-          tags: ${{ matrix.id }}-build-image:${{ matrix.id }}
+          tags: openwrt-build-image:${{ steps.prep.outputs.created }}
           # caching's not worth the trouble and compression/transmit/decompression time
           build-args: |
-            MACHINE_ID=${{matrix.id}}
-            OPENWRT_CONFIG=${{ matrix.config }}
-            RELEASE_VERSION=${{needs.prepare.outputs.created}}
+            MACHINE_ID=${{ env.SEED_MACHINE_ID }}
+            OPENWRT_CONFIG=${{ env.SEED_OPENWRT_CONFIG }}
+            RELEASE_VERSION=${{ steps.prep.outputs.created }}
 
-      - name: Extract artifacts from docker ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
-        run: docker cp $(docker create --rm ${{ matrix.id }}-build-image:${{ matrix.id }}):/out ./
+      - name: Extract artifacts from docker
+        run: docker cp "$(docker create --rm openwrt-build-image:${{ steps.prep.outputs.created }})":/out ./
 
-      # Release the artifacts into GitHub Releases
-      - name: Release ${{ matrix.id }} ${{ matrix.branch }} ${{ matrix.config}}
+      - name: Show artifacts and disk usage
+        run: |
+          ls -lah out/
+          df -h .
+
+      # Release the artifacts for every board and variant into a single GitHub Release
+      - name: "Release ${{ steps.prep.outputs.created }}"
         uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "${{needs.prepare.outputs.created}}-${{ matrix.id }}"
+          automatic_release_tag: "${{ steps.prep.outputs.created }}"
           prerelease: false
-          title: "${{ matrix.id }} - ${{needs.prepare.outputs.created}}"
+          title: "OpenWrt ${{ env.OPENWRT_BRANCH }} - ${{ steps.prep.outputs.created }}"
           files: |
             out/*
