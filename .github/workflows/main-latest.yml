@@ -10,7 +10,7 @@ permissions: write-all # just let it do everything
 env:
   # The fork that carries the Dockerfile, the board configs and the files_<board> overlays.
   OPENWRT_REPO: "rpardini/openwrt"
-  OPENWRT_BRANCH: "r5s-main-202609"
+  OPENWRT_BRANCH: "r5s-main-202611"
   # The Dockerfile builds the toolchain, the kernel and all packages once (they're the same for every
   # board: all three are rockchip/armv8), seeded with the config below. The per-board image stages
   # then re-point .config at their own board, so this only picks the seed - leave it at r5s.
@@ -19,7 +19,7 @@ env:
 
 jobs:
 
-  # A single job: one Docker build produces every board and variant (e24c/r5s/r6c, custom/generic),
+  # A single job: one Docker build produces every board and variant (r5s/r6c, custom/generic),
   # and they all go into a single GitHub Release.
   build:
     runs-on: ubuntu-24.04-arm
