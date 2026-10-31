@@ -19,7 +19,7 @@ env:
 
 jobs:
 
-  # A single job: one Docker build produces every board and variant (r5s, custom/generic),
+  # A single job: one Docker build produces every board and variant (r5s/r6c/e24c, custom/generic),
   # and they all go into a single GitHub Release.
   build:
     runs-on: ubuntu-24.04-arm
@@ -66,7 +66,7 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=-1
             env.BUILDKIT_STEP_LOG_MAX_SPEED=-1
 
-      # Builds the final stage, which collects /dist from all per-board image stages (r5s custom + generic). Those stages
+      # Builds the final stage, which collects /dist from all six per-board image stages (r5s/r6c/e24c, custom + generic). Those stages
       # have no dependencies on each other, so buildx runs them in parallel on this one runner.
       - name: "Build all boards from ${{ env.OPENWRT_BRANCH }}"
         uses: docker/build-push-action@v6
