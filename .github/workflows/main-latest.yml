@@ -12,14 +12,14 @@ env:
   OPENWRT_REPO: "rpardini/openwrt"
   OPENWRT_BRANCH: "r5s-main-202611"
   # The Dockerfile builds the toolchain, the kernel and all packages once (they're the same for every
-  # board: all three are rockchip/armv8), seeded with the config below. The per-board image stages
+  # board: all are rockchip/armv8), seeded with the config below. The per-board image stages
   # then re-point .config at their own board, so this only picks the seed - leave it at r5s.
   SEED_MACHINE_ID: "r5s"
   SEED_OPENWRT_CONFIG: "diffconfig.r5s.final"
 
 jobs:
 
-  # A single job: one Docker build produces every board and variant (r5s/r6c, custom/generic),
+  # A single job: one Docker build produces every board and variant (r5s, custom/generic),
   # and they all go into a single GitHub Release.
   build:
     runs-on: ubuntu-24.04-arm
@@ -66,7 +66,7 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=-1
             env.BUILDKIT_STEP_LOG_MAX_SPEED=-1
 
-      # Builds the final stage, which collects /dist from all six per-board image stages. Those stages
+      # Builds the final stage, which collects /dist from all per-board image stages (r5s custom + generic). Those stages
       # have no dependencies on each other, so buildx runs them in parallel on this one runner.
       - name: "Build all boards from ${{ env.OPENWRT_BRANCH }}"
         uses: docker/build-push-action@v6
